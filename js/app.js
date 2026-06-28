@@ -171,7 +171,7 @@ function renderToday() {
   if (dueTasks.length) html += group("Tasks due", dueTasks.map(taskRow).join(""));
   const habitRows = daily.map(todayDailyRow).concat(intervalDue.map(todayIntervalRow));
   if (habitRows.length) html += group("Habits", habitRows.join(""));
-  const upRows = soonCd.map((x) => comingRow(x.cd, niceShort(x.cd.date), x.d)).concat(soonEv.map((x) => comingRow(x.ev, `${niceMD(x.ev.month, x.ev.day)} · yearly`, x.d)));
+  const upRows = soonCd.map((x) => comingRow(x.cd, niceShort(x.cd.date), x.d, x.cd.id)).concat(soonEv.map((x) => comingRow(x.ev, `${niceMD(x.ev.month, x.ev.day)} · yearly`, x.d)));
   if (upRows.length) html += group("Coming up", upRows.join(""));
   if (!html) html = emptyState("today", "All clear", "Nothing needs you today. Enjoy the calm ✦");
   $("#today-body").innerHTML = html;
@@ -193,12 +193,14 @@ function todayIntervalRow(h) {
     <button class="t-do" data-intdone="${h.id}">Done</button>
   </div>`;
 }
-function comingRow(item, sub, d) {
+function comingRow(item, sub, d, cdId) {
   const when = d === 0 ? `<b>Today</b>` : `<b>${d}</b><small>day${d > 1 ? "s" : ""}</small>`;
+  const check = cdId ? `<button class="t-check" data-cd-toggle="${cdId}" aria-label="Mark done">${icon("check")}</button>` : "";
   return `<div class="today-row" style="--c:${item.color}">
     <div class="t-ico">${icon(item.icon)}</div>
     <div class="t-main"><b>${esc(item.title)}</b><small>${sub}</small></div>
     <div class="t-when ${d === 0 ? "is-today" : ""}">${when}</div>
+    ${check}
   </div>`;
 }
 
