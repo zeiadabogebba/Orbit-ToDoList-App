@@ -108,6 +108,7 @@ function hasData() {
 /* ---------------- view state ---------------- */
 let activeTab = "tasks";
 let filterCat = null;            // category id or null (tasks filter)
+let manageCats = false;          // category edit mode on the Tasks screen
 let calY, calM;                  // calendar view (calM 0-based)
 { const d = new Date(); calY = d.getFullYear(); calM = d.getMonth(); }
 
@@ -143,11 +144,14 @@ function emptyState(ic, title, text) {
 function renderTasks() {
   // filter chips
   const fc = $("#cat-filter");
+  if (!state.categories.length) manageCats = false;
   let chips = `<button class="cat-chip ${filterCat === null ? "active" : ""}" data-filter="">All</button>`;
   state.categories.forEach((c) => {
-    chips += `<button class="cat-chip ${filterCat === c.id ? "active" : ""}" data-filter="${c.id}" style="--c:${c.color}"><span class="swatch-dot"></span>${esc(c.name)}</button>`;
+    const tag = manageCats ? icon("edit") : `<span class="swatch-dot"></span>`;
+    chips += `<button class="cat-chip ${filterCat === c.id && !manageCats ? "active" : ""} ${manageCats ? "editing" : ""}" data-filter="${c.id}" style="--c:${c.color}">${tag}${esc(c.name)}</button>`;
   });
   chips += `<button class="cat-chip add" data-act="new-cat-manage">${icon("plus")}New</button>`;
+  if (state.categories.length) chips += `<button class="cat-chip manage ${manageCats ? "on" : ""}" data-act="toggle-manage">${icon(manageCats ? "check" : "edit")}${manageCats ? "Done" : "Edit"}</button>`;
   fc.innerHTML = chips;
 
   const match = (t) => filterCat === null || t.catId === filterCat;
@@ -699,6 +703,7 @@ function pickIcon(ic) {
    ============================================================ */
 function setTab(tab) {
   activeTab = tab;
+  manageCats = false;
   $$(".screen").forEach((s) => { s.hidden = s.dataset.screen !== tab; });
   $$(".dock-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   const fab = $("#fab");
@@ -914,6 +919,7 @@ document.addEventListener("click", (e) => {
       case "close-sheet": return closeSheets();
       case "new-cat-manage": return openCatSheet(null);
       case "new-cat-from-task": return openCatSheet("task");
+      case "toggle-manage": manageCats = !manageCats; renderTasks(); return;
       case "clear-time": taskState.time = null; $("#task-time").value = ""; return;
     }
     return;
@@ -921,7 +927,11 @@ document.addEventListener("click", (e) => {
   // tasks
   if (el.dataset.toggle) return toggleTask(el.dataset.toggle, el);
   if (el.dataset.editTask) { const t = state.tasks.find((x) => x.id === el.dataset.editTask); if (t) openTaskSheet(t); return; }
-  if (el.dataset.filter !== undefined) { filterCat = el.dataset.filter || null; renderTasks(); return; }
+  if (el.dataset.filter !== undefined) {
+    const id = el.dataset.filter || null;
+    if (manageCats && id) { const c = catOf(id); if (c) openCatEdit(c); return; }
+    filterCat = id; renderTasks(); return;
+  }
   if (el.dataset.pickcat) { taskState.catId = taskState.catId === el.dataset.pickcat ? null : el.dataset.pickcat; renderTaskCats(); return; }
   if (el.dataset.deadline) {
     const v = el.dataset.deadline;
@@ -950,14 +960,6 @@ document.addEventListener("click", (e) => {
   if (el.dataset.editEv) { const ev = state.events.find((x) => x.id === el.dataset.editEv); if (ev) openEvSheet(ev); return; }
   // calendar day
   if (el.dataset.day) return openDaySheet(el.dataset.day);
-});
-
-/* double-tap a category filter chip to rename / recolour / delete it */
-$("#cat-filter").addEventListener("dblclick", (e) => {
-  const chip = e.target.closest("[data-filter]");
-  if (!chip || !chip.dataset.filter) return;
-  const c = catOf(chip.dataset.filter);
-  if (c) openCatEdit(c);
 });
 
 /* completed section toggle */

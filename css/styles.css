@@ -205,6 +205,12 @@ html[data-theme="light"] .ic-sun { display: block; }
 .cat-chip:active { transform: scale(.93); }
 .cat-chip.active { color: var(--text); border-color: transparent; background: color-mix(in srgb, var(--c, var(--accent)) 20%, var(--card-solid)); box-shadow: var(--glow) color-mix(in srgb, var(--c, var(--accent)) 40%, transparent); }
 .cat-chip.add { color: var(--accent); border-style: dashed; }
+.cat-chip .ic { width: 14px; height: 14px; }
+.cat-chip.manage { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--stroke)); }
+.cat-chip.manage.on { color: #fff; background: var(--brand-grad-soft); border-color: transparent; box-shadow: var(--glow) color-mix(in srgb, var(--accent) 40%, transparent); }
+.cat-chip.editing { color: var(--text); border-style: dashed; border-color: color-mix(in srgb, var(--c, var(--accent)) 55%, var(--stroke-2)); animation: catwiggle .5s var(--ease); }
+.cat-chip.editing .ic { color: var(--c, var(--accent)); }
+@keyframes catwiggle { 0% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } 100% { transform: rotate(0); } }
 
 /* ---------------- task cards ---------------- */
 .task {
