@@ -551,7 +551,7 @@ function openCdSheet(cd) {
   $("#cd-sheet-title").textContent = cd ? "Edit countdown" : "New countdown";
   $("#cd-save").textContent = cd ? "Save countdown" : "Add countdown";
   $("#cd-input").value = cd ? cd.title : "";
-  $("#cd-date").value = cd ? cd.date : "";
+  $("#cd-date").value = cd ? cd.date : todayKey();
   $("#cd-edit-extras").hidden = !cd;
   renderSwatchRow($("#cd-colors"), cdState.color);
   renderIconGrid($("#cd-icons"), cdState.icon, cdState.color);
@@ -617,7 +617,7 @@ function openEvSheet(ev) {
   $("#ev-sheet-title").textContent = ev ? "Edit yearly event" : "New yearly event";
   $("#ev-save").textContent = ev ? "Save event" : "Add event";
   $("#ev-input").value = ev ? ev.title : "";
-  $("#ev-date").value = ev ? `${new Date().getFullYear()}-${pad2(ev.month)}-${pad2(ev.day)}` : "";
+  $("#ev-date").value = ev ? `${new Date().getFullYear()}-${pad2(ev.month)}-${pad2(ev.day)}` : todayKey();
   $("#ev-edit-extras").hidden = !ev;
   renderSwatchRow($("#ev-colors"), evState.color);
   renderIconGrid($("#ev-icons"), evState.icon, evState.color);
