@@ -150,7 +150,7 @@ function renderToday() {
     .sort((a, b) => a.deadline !== b.deadline ? (a.deadline < b.deadline ? -1 : 1) : ((a.time || "99:99") < (b.time || "99:99") ? -1 : 1));
   const daily = state.habits.filter((h) => h.type === "daily");
   const intervalDue = state.habits.filter((h) => h.type === "interval" && daysBetween(t, h.next) <= 0);
-  const soonCd = state.countdowns.map((cd) => ({ cd, d: daysBetween(t, cd.date) })).filter((x) => x.d >= 0 && x.d <= 7).sort((a, b) => a.d - b.d);
+  const soonCd = state.countdowns.filter((cd) => !cd.done).map((cd) => ({ cd, d: daysBetween(t, cd.date) })).filter((x) => x.d >= 0 && x.d <= 7).sort((a, b) => a.d - b.d);
   const soonEv = state.events.map((ev) => ({ ev, d: daysBetween(t, nextOccurrenceKey(ev)) })).filter((x) => x.d >= 0 && x.d <= 7).sort((a, b) => a.d - b.d);
 
   // progress ring: tasks due today/overdue + daily habits
@@ -797,23 +797,39 @@ function deleteHabit() {
    COUNTDOWNS
    ============================================================ */
 function renderCountdowns() {
-  // manual order (drag/reorder via the edit sheet); newest added last
-  $("#countdown-list").innerHTML = state.countdowns.length
-    ? state.countdowns.map(cdCard).join("")
-    : emptyState("hourglass", "Nothing to count down", "Add a trip, a birthday, a release — anything you're waiting for.");
+  // manual order (reorder via the edit sheet); newest added last
+  const active = state.countdowns.filter((c) => !c.done);
+  const done = state.countdowns.filter((c) => c.done);
+  let html = "";
+  if (active.length) html += active.map(cdCard).join("");
+  else if (!done.length) html += emptyState("hourglass", "Nothing to count down", "Add a trip, a birthday, a release — anything you're waiting for.");
+  if (done.length) html += `<h3 class="group-label" style="margin:18px 0 0">Done</h3>` + done.map(cdCard).join("");
+  $("#countdown-list").innerHTML = html;
 }
 
 function cdCard(cd) {
   const diff = daysBetween(todayKey(), cd.date);
   let when;
-  if (diff > 0) when = `<div class="cd-when"><b>${diff}</b><small>day${diff > 1 ? "s" : ""} left</small></div>`;
+  if (cd.done) when = `<div class="cd-when done-when"><b>Done</b></div>`;
+  else if (diff > 0) when = `<div class="cd-when"><b>${diff}</b><small>day${diff > 1 ? "s" : ""} left</small></div>`;
   else if (diff === 0) when = `<div class="cd-when is-today"><b>Today</b><small>🎉</small></div>`;
   else when = `<div class="cd-when passed"><b>${-diff}d</b><small>ago</small></div>`;
-  return `<div class="cd-card" style="--c:${cd.color}" data-edit-cd="${cd.id}">
+  return `<div class="cd-card ${cd.done ? "done" : ""}" style="--c:${cd.color}" data-edit-cd="${cd.id}">
     <div class="cd-icon">${icon(cd.icon)}</div>
     <div class="cd-main"><div class="cd-title">${esc(cd.title)}</div><div class="cd-date">${niceDate(cd.date)}</div></div>
     ${when}
+    <button class="cd-check ${cd.done ? "on" : ""}" data-cd-toggle="${cd.id}" aria-label="${cd.done ? "Mark not done" : "Mark done"}">${icon("check")}</button>
   </div>`;
+}
+
+function toggleCountdown(id, btn) {
+  const cd = state.countdowns.find((x) => x.id === id);
+  if (!cd) return;
+  cd.done = !cd.done;
+  cd.completedAt = cd.done ? Date.now() : null;
+  save();
+  if (cd.done) { if (btn) btn.classList.add("burst"); celebrate("Countdown done ✦", 34); }
+  renderActive();
 }
 
 function openCdSheet(cd) {
@@ -929,7 +945,7 @@ function gatherDay(key) {
   const [, m, d] = key.split("-").map(Number);
   const items = [];
   state.tasks.forEach((t) => { if (!t.done && t.deadline === key) { const c = catOf(t.catId); const base = c ? c.name : "Task"; items.push({ type: "task", color: c ? c.color : null, title: t.title, icon: "tasks", sub: t.time ? `${fmtTime(t.time)} · ${base}` : base }); } });
-  state.countdowns.forEach((cd) => { if (cd.date === key) items.push({ type: "cd", color: cd.color, title: cd.title, icon: cd.icon, sub: "Countdown" }); });
+  state.countdowns.forEach((cd) => { if (cd.date === key && !cd.done) items.push({ type: "cd", color: cd.color, title: cd.title, icon: cd.icon, sub: "Countdown" }); });
   state.events.forEach((ev) => { if (ev.month === m && ev.day === d) items.push({ type: "event", color: ev.color, title: ev.title, icon: ev.icon, sub: "Yearly event" }); });
   state.habits.forEach((h) => { if (h.type === "interval" && h.next === key) items.push({ type: "habit", color: h.color, title: h.name, icon: h.icon, sub: `Every ${h.every} days` }); });
   return items;
@@ -1234,7 +1250,7 @@ $("#cal-month-label").addEventListener("click", () => { const d = new Date(); ca
 
 /* ---------------- global delegation ---------------- */
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
+  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-cd-toggle],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
   if (!el) return;
 
   if (el.dataset.tab) return setTab(el.dataset.tab);
@@ -1292,7 +1308,8 @@ document.addEventListener("click", (e) => {
     habitState.every = clamp(habitState.every + Number(el.dataset.step), 1, 365);
     $("#habit-interval-val").textContent = habitState.every; return;
   }
-  // countdowns / events edit (whole card)
+  // countdowns / events
+  if (el.dataset.cdToggle) return toggleCountdown(el.dataset.cdToggle, el);
   if (el.dataset.editCd) { const cd = state.countdowns.find((x) => x.id === el.dataset.editCd); if (cd) openCdSheet(cd); return; }
   if (el.dataset.editEv) { const ev = state.events.find((x) => x.id === el.dataset.editEv); if (ev) openEvSheet(ev); return; }
   // calendar day

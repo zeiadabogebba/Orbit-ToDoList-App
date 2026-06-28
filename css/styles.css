@@ -338,6 +338,14 @@ html[data-theme="light"] .ic-sun { display: block; }
 .cd-when small { display: block; color: var(--faint); font-size: .64rem; text-transform: uppercase; letter-spacing: .07em; margin-top: 4px; }
 .cd-when.passed b { font-size: 1.1rem; color: var(--muted); }
 .cd-when.is-today b { font-size: 1.2rem; }
+.cd-when.done-when b { font-size: 1.1rem; color: var(--muted); }
+.cd-check { position: relative; width: 34px; height: 34px; min-width: 34px; border-radius: 11px; border: 2px solid var(--stroke-2); display: grid; place-items: center; color: transparent; flex: none; transition: transform .35s var(--spring), background .25s, border-color .25s, color .2s; }
+.cd-check .ic { width: 18px; height: 18px; stroke-width: 3; }
+.cd-check:active { transform: scale(.85); }
+.cd-check.on { background: var(--brand-grad-soft); border-color: transparent; color: #fff; box-shadow: var(--glow) color-mix(in srgb, var(--accent) 45%, transparent); }
+.cd-card.done { opacity: .62; }
+.cd-card.done::before { display: none; }
+.cd-card.done .cd-title { text-decoration: line-through; text-decoration-color: var(--faint); color: var(--muted); }
 
 /* ---------------- yearly events ---------------- */
 .ev-card {
