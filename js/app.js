@@ -406,7 +406,7 @@ function dailyCard(h) {
   const t = todayKey();
   let dots = "";
   for (let i = 6; i >= 0; i--) { const k = addDays(t, -i); dots += `<span class="wd ${h.log && h.log[k] ? "on" : ""} ${i === 0 ? "today" : ""}"></span>`; }
-  return `<div class="habit-card" style="--c:${h.color}">
+  return `<div class="habit-card" style="--c:${h.color}" data-habit-stats="${h.id}">
     <div class="habit-top">
       <div class="habit-icon">${icon(h.icon)}</div>
       <div class="streak ${s.current ? "lit" : ""}"><b>${icon("flame")}${s.current}</b><small>day streak</small></div>
@@ -427,7 +427,7 @@ function intervalCard(h) {
   if (diff < 0) { center = `<b>${-diff}</b><small>over</small>`; statusCls = "over"; statusTxt = `Overdue by ${-diff} day${-diff > 1 ? "s" : ""}`; }
   else if (diff === 0) { center = icon("bell"); statusCls = "due"; statusTxt = "Due today"; }
   else { center = `<b>${diff}</b><small>days</small>`; statusTxt = `Due ${diff === 1 ? "tomorrow" : `in ${diff} days`} · ${niceShort(h.next)}`; }
-  return `<div class="int-card" style="--c:${h.color}">
+  return `<div class="int-card" style="--c:${h.color}" data-habit-stats="${h.id}">
     <div class="int-ring" style="--p:${(diff < 0 ? 1 : p).toFixed(3)};--c:${h.color}">${center}</div>
     <div class="int-main">
       <div class="int-name">${icon(h.icon)}${esc(h.name)}</div>
@@ -456,8 +456,89 @@ function intervalDone(id) {
   const t = todayKey();
   h.last = t;
   h.next = addDays(t, h.every);
+  h.count = (h.count || 0) + 1;
   save(); renderHabits();
   toast(`Done! Next in ${h.every} days`);
+}
+
+/* ---- habit statistics ---- */
+function dailyStats(h) {
+  const log = h.log || {};
+  const keys = Object.keys(log).filter((k) => log[k]).sort();
+  const total = keys.length;
+  let runs = 0, best = 0, run = 0, prev = null;
+  for (const k of keys) {
+    if (prev && daysBetween(prev, k) === 1) run++; else { run = 1; runs++; }
+    if (run > best) best = run;
+    prev = k;
+  }
+  const s = streakInfo(h);
+  const breaks = Math.max(0, runs - 1);
+  let start = h.createdAt ? dateKey(new Date(h.createdAt)) : (keys[0] || todayKey());
+  if (keys[0] && keys[0] < start) start = keys[0];
+  const span = Math.max(1, daysBetween(start, todayKey()) + 1);
+  const rate = Math.round((total / span) * 100);
+  let last30 = 0;
+  for (let i = 0; i < 30; i++) if (log[addDays(todayKey(), -i)]) last30++;
+  return { current: s.current, best, total, breaks, rate, last30, start };
+}
+
+function heatmapCells(h) {
+  const log = h.log || {};
+  const t = todayKey();
+  const monIdx = (parseKey(t).getDay() + 6) % 7; // today's weekday, Mon=0
+  const weeks = 12;
+  let out = "";
+  for (let col = 0; col < weeks; col++) {
+    for (let row = 0; row < 7; row++) {
+      const off = -monIdx - (weeks - 1 - col) * 7 + row;  // day offset from today
+      const k = addDays(t, off);
+      out += `<i class="${off > 0 ? "fut" : log[k] ? "on" : ""}" title="${k}"></i>`;
+    }
+  }
+  return out;
+}
+
+let statsHabitId = null;
+function openHabitStats(h) {
+  statsHabitId = h.id;
+  let body;
+  if (h.type === "daily") {
+    const d = dailyStats(h);
+    const tile = (n, l) => `<div class="stat"><b>${n}</b><small>${l}</small></div>`;
+    body = `
+      <div class="stats-head" style="--c:${h.color}">
+        <div class="stats-ico">${icon(h.icon)}</div>
+        <div><h4>${esc(h.name)}</h4><span>Daily streak · since ${niceShort(d.start)}</span></div>
+      </div>
+      <div class="stat-grid">
+        ${tile(d.current, "Current streak")}
+        ${tile(d.best, "Best streak")}
+        ${tile(d.total, "Total check-ins")}
+        ${tile(d.breaks, "Times broken")}
+        ${tile(d.rate + "%", "Consistency")}
+        ${tile(d.last30, "Last 30 days")}
+      </div>
+      <label class="field-label">Last 12 weeks</label>
+      <div class="heatmap" style="--c:${h.color}">${heatmapCells(h)}</div>`;
+  } else {
+    const diff = daysBetween(todayKey(), h.next);
+    const status = diff < 0 ? `Overdue by ${-diff} day${-diff > 1 ? "s" : ""}` : diff === 0 ? "Due today" : `Due in ${diff} day${diff > 1 ? "s" : ""}`;
+    const tile = (n, l) => `<div class="stat"><b>${n}</b><small>${l}</small></div>`;
+    body = `
+      <div class="stats-head" style="--c:${h.color}">
+        <div class="stats-ico">${icon(h.icon)}</div>
+        <div><h4>${esc(h.name)}</h4><span>Every ${h.every} days · ${esc(status)}</span></div>
+      </div>
+      <div class="stat-grid two">
+        ${tile(h.every, "Every N days")}
+        ${tile(h.count || 0, "Completed")}
+        ${tile(h.last ? niceShort(h.last) : "—", "Last done")}
+        ${tile(niceShort(h.next), "Next due")}
+      </div>`;
+  }
+  $("#stats-body").innerHTML = body;
+  openSheet("sheet-habit-stats");
 }
 
 function openHabitSheet(habit) {
@@ -911,6 +992,7 @@ $("#cat-delete").addEventListener("click", deleteCat);
 $("#habit-input").addEventListener("input", updateHabitSave);
 $("#habit-save").addEventListener("click", saveHabit);
 $("#habit-delete").addEventListener("click", deleteHabit);
+$("#stats-edit").addEventListener("click", () => { const h = state.habits.find((x) => x.id === statsHabitId); if (h) openHabitSheet(h); });
 $("#habit-next").addEventListener("change", (e) => { habitState.next = e.target.value || todayKey(); });
 // countdown sheet
 $("#cd-input").addEventListener("input", updateCdSave);
@@ -934,7 +1016,7 @@ $("#cal-month-label").addEventListener("click", () => { const d = new Date(); ca
 
 /* ---------------- global delegation ---------------- */
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
+  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
   if (!el) return;
 
   if (el.dataset.tab) return setTab(el.dataset.tab);
@@ -971,6 +1053,7 @@ document.addEventListener("click", (e) => {
   if (el.dataset.checkin) return checkinHabit(el.dataset.checkin, el);
   if (el.dataset.intdone) return intervalDone(el.dataset.intdone);
   if (el.dataset.editHabit) { const h = state.habits.find((x) => x.id === el.dataset.editHabit); if (h) openHabitSheet(h); return; }
+  if (el.dataset.habitStats) { const h = state.habits.find((x) => x.id === el.dataset.habitStats); if (h) openHabitStats(h); return; }
   if (el.dataset.htype) {
     if (el.disabled) return;
     habitState.type = el.dataset.htype;
