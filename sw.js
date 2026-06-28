@@ -1,6 +1,6 @@
 /* Orbit service worker — offline-first app shell */
 
-const CACHE = "orbit-v10";
+const CACHE = "orbit-v11";
 
 const SHELL = [
   ".",

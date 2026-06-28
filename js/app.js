@@ -115,7 +115,7 @@ let calY, calM;                  // calendar view (calM 0-based)
 let openSheetId = null;
 
 /* per-sheet working state */
-let taskState = { editId: null, catId: null, deadline: null, time: null };
+let taskState = { editId: null, catId: null, deadline: null, time: null, note: "", subtasks: [] };
 let catState = { editId: null, color: COLORS[0] };
 let habitState = { editId: null, type: "daily", icon: "flame", color: COLORS[4], every: 40, next: todayKey() };
 let cdState = { editId: null, icon: "sparkles", color: COLORS[1] };
@@ -127,7 +127,8 @@ const catOf = (id) => state.categories.find((c) => c.id === id) || null;
    RENDER DISPATCH
    ============================================================ */
 function renderActive() {
-  if (activeTab === "tasks") renderTasks();
+  if (activeTab === "today") renderToday();
+  else if (activeTab === "tasks") renderTasks();
   else if (activeTab === "habits") renderHabits();
   else if (activeTab === "countdowns") renderCountdowns();
   else if (activeTab === "events") renderEvents();
@@ -136,6 +137,69 @@ function renderActive() {
 
 function emptyState(ic, title, text) {
   return `<div class="empty"><div class="e-ico">${icon(ic)}</div><h4>${esc(title)}</h4><p>${esc(text)}</p></div>`;
+}
+
+/* ============================================================
+   TODAY (home)
+   ============================================================ */
+function renderToday() {
+  const t = todayKey();
+  $("#today-date").textContent = parseKey(t).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+
+  const dueTasks = state.tasks.filter((x) => !x.done && x.deadline && x.deadline <= t)
+    .sort((a, b) => a.deadline !== b.deadline ? (a.deadline < b.deadline ? -1 : 1) : ((a.time || "99:99") < (b.time || "99:99") ? -1 : 1));
+  const daily = state.habits.filter((h) => h.type === "daily");
+  const intervalDue = state.habits.filter((h) => h.type === "interval" && daysBetween(t, h.next) <= 0);
+  const soonCd = state.countdowns.map((cd) => ({ cd, d: daysBetween(t, cd.date) })).filter((x) => x.d >= 0 && x.d <= 7).sort((a, b) => a.d - b.d);
+  const soonEv = state.events.map((ev) => ({ ev, d: daysBetween(t, nextOccurrenceKey(ev)) })).filter((x) => x.d >= 0 && x.d <= 7).sort((a, b) => a.d - b.d);
+
+  // progress ring: tasks due today/overdue + daily habits
+  const taskDue = state.tasks.filter((x) => x.deadline && x.deadline <= t);
+  const totalRing = taskDue.length + daily.length;
+  const doneRing = taskDue.filter((x) => x.done).length + daily.filter((h) => h.log && h.log[t]).length;
+  const ring = $("#today-ring");
+  if (totalRing) {
+    const frac = doneRing / totalRing;
+    ring.style.setProperty("--p", frac.toFixed(3));
+    ring.style.setProperty("--c", "var(--type-habit)");
+    ring.innerHTML = `<b>${Math.round(frac * 100)}%</b>`;
+    ring.hidden = false;
+  } else ring.hidden = true;
+
+  const group = (label, inner) => `<h3 class="group-label">${label}</h3><div class="stack">${inner}</div>`;
+  let html = "";
+  if (dueTasks.length) html += group("Tasks due", dueTasks.map(taskRow).join(""));
+  const habitRows = daily.map(todayDailyRow).concat(intervalDue.map(todayIntervalRow));
+  if (habitRows.length) html += group("Habits", habitRows.join(""));
+  const upRows = soonCd.map((x) => comingRow(x.cd, niceShort(x.cd.date), x.d)).concat(soonEv.map((x) => comingRow(x.ev, `${niceMD(x.ev.month, x.ev.day)} · yearly`, x.d)));
+  if (upRows.length) html += group("Coming up", upRows.join(""));
+  if (!html) html = emptyState("today", "All clear", "Nothing needs you today. Enjoy the calm ✦");
+  $("#today-body").innerHTML = html;
+}
+
+function todayDailyRow(h) {
+  const s = streakInfo(h);
+  return `<div class="today-row ${s.doneToday ? "done" : ""}" style="--c:${h.color}">
+    <div class="t-ico">${icon(h.icon)}</div>
+    <div class="t-main"><b>${esc(h.name)}</b><small>${s.current} day streak</small></div>
+    <button class="t-check ${s.doneToday ? "on" : ""}" data-checkin="${h.id}" aria-label="Check in">${icon("check")}</button>
+  </div>`;
+}
+function todayIntervalRow(h) {
+  const diff = daysBetween(todayKey(), h.next);
+  return `<div class="today-row" style="--c:${h.color}">
+    <div class="t-ico">${icon(h.icon)}</div>
+    <div class="t-main"><b>${esc(h.name)}</b><small class="${diff < 0 ? "over" : ""}">${diff < 0 ? `Overdue by ${-diff} day${-diff > 1 ? "s" : ""}` : "Due today"}</small></div>
+    <button class="t-do" data-intdone="${h.id}">Done</button>
+  </div>`;
+}
+function comingRow(item, sub, d) {
+  const when = d === 0 ? `<b>Today</b>` : `<b>${d}</b><small>day${d > 1 ? "s" : ""}</small>`;
+  return `<div class="today-row" style="--c:${item.color}">
+    <div class="t-ico">${icon(item.icon)}</div>
+    <div class="t-main"><b>${esc(item.title)}</b><small>${sub}</small></div>
+    <div class="t-when ${d === 0 ? "is-today" : ""}">${when}</div>
+  </div>`;
 }
 
 /* ============================================================
@@ -203,29 +267,53 @@ function renderTasks() {
 
 function taskRow(t) {
   const c = catOf(t.catId);
-  const cv = c ? `style="--c:${c.color}"` : "";
+  const cv = c ? ` style="--c:${c.color}"` : "";
+  const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
   let meta = "";
   if (c) meta += `<span class="task-cat" style="--c:${c.color}"><i></i>${esc(c.name)}</span>`;
   if (t.deadline && !t.done) { const d = deadlineLabel(t); meta += `<span class="deadline-badge ${d.cls}">${icon(d.icon)}${d.text}</span>`; }
-  return `<div class="task ${t.done ? "done" : ""}">
-    <button class="task-check" data-toggle="${t.id}" ${cv} aria-label="${t.done ? "Mark not done" : "Mark done"}">${icon("check")}</button>
+  if (subs.length) meta += `<span class="deadline-badge">${icon("check")}${subs.filter((s) => s.done).length}/${subs.length}</span>`;
+  const noteHtml = t.note ? `<div class="task-note">${icon("edit")}<span>${esc(t.note)}</span></div>` : "";
+  const subHtml = subs.length
+    ? `<div class="task-subs">${subs.map((s) => `<button class="subtask ${s.done ? "on" : ""}" data-subtoggle="${t.id}|${s.id}"><span class="sub-box">${icon("check")}</span><span>${esc(s.title)}</span></button>`).join("")}</div>`
+    : "";
+  return `<div class="task ${t.done ? "done" : ""}"${cv}>
+    <button class="task-check" data-toggle="${t.id}" aria-label="${t.done ? "Mark not done" : "Mark done"}">${icon("check")}</button>
     <div class="task-main">
       <div class="task-name">${esc(t.title)}</div>
+      ${noteHtml}
       ${meta ? `<div class="task-meta">${meta}</div>` : ""}
+      ${subHtml}
     </div>
     <button class="task-edit" data-edit-task="${t.id}" aria-label="Edit task">${icon("edit")}</button>
   </div>`;
 }
 
+function toggleSubtask(taskId, subId) {
+  const t = state.tasks.find((x) => x.id === taskId);
+  if (!t || !Array.isArray(t.subtasks)) return;
+  const s = t.subtasks.find((x) => x.id === subId);
+  if (!s) return;
+  s.done = !s.done;
+  haptic(8);
+  save();
+  renderActive();
+}
+
 function toggleTask(id, btn) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
+  const wasTodayDue = !t.done && t.deadline && t.deadline <= todayKey();
   t.done = !t.done;
   t.completedAt = t.done ? Date.now() : null;
-  if (t.done && btn) { btn.classList.add("burst"); }
+  if (t.done && btn) { btn.classList.add("burst"); haptic(12); }
   save();
-  if (t.done) toast("Nice — task done ✦");
-  renderTasks();
+  if (t.done) {
+    const remaining = state.tasks.some((x) => !x.done && x.deadline && x.deadline <= todayKey());
+    if (wasTodayDue && !remaining) celebrate("All done for today! 🎉");
+    else toast("Nice — task done ✦");
+  }
+  renderActive();
 }
 
 function openTaskSheet(task) {
@@ -233,15 +321,42 @@ function openTaskSheet(task) {
   taskState.catId = task ? task.catId : (filterCat || null);
   taskState.deadline = task ? task.deadline || null : null;
   taskState.time = task ? task.time || null : null;
+  taskState.note = task ? (task.note || "") : "";
+  taskState.subtasks = task && Array.isArray(task.subtasks) ? task.subtasks.map((s) => ({ ...s })) : [];
   $("#task-title").textContent = task ? "Edit task" : "New task";
   $("#task-input").value = task ? task.title : "";
+  $("#task-note").value = taskState.note;
+  $("#subtask-input").value = "";
   $("#task-save").textContent = task ? "Save task" : "Add task";
   $("#task-edit-extras").hidden = !task;
   renderTaskCats();
   renderDeadlineRow();
+  renderSubtaskEditor();
   updateTaskSave();
   openSheet("sheet-task");
   if (!task) setTimeout(() => $("#task-input").focus(), 350);
+}
+
+function renderSubtaskEditor() {
+  $("#subtask-list").innerHTML = taskState.subtasks.map((s, i) =>
+    `<div class="subtask-row">
+      <button class="sb-check ${s.done ? "on" : ""}" data-sbtoggle="${i}" aria-label="Toggle done">${icon("check")}</button>
+      <input type="text" class="field" data-sbedit="${i}" value="${esc(s.title)}" maxlength="80" aria-label="Subtask" />
+      <button class="sb-del" data-sbdel="${i}" aria-label="Remove">${icon("x")}</button>
+    </div>`).join("");
+}
+function syncSubtasks() {
+  $$("#subtask-list [data-sbedit]").forEach((inp) => { const i = +inp.dataset.sbedit; if (taskState.subtasks[i]) taskState.subtasks[i].title = inp.value; });
+}
+function addSubtask() {
+  const inp = $("#subtask-input");
+  const v = inp.value.trim();
+  if (!v) return;
+  syncSubtasks();
+  taskState.subtasks.push({ id: uid(), title: v, done: false });
+  inp.value = "";
+  renderSubtaskEditor();
+  inp.focus();
 }
 
 function renderTaskCats() {
@@ -272,21 +387,45 @@ function saveTask() {
   const title = $("#task-input").value.trim();
   if (!title) return;
   const time = taskState.deadline ? taskState.time : null;
+  const note = $("#task-note").value.trim();
+  syncSubtasks();
+  const subtasks = taskState.subtasks.map((s) => ({ id: s.id, title: s.title.trim(), done: !!s.done })).filter((s) => s.title);
   if (taskState.editId) {
     const t = state.tasks.find((x) => x.id === taskState.editId);
-    if (t) { t.title = title; t.catId = taskState.catId; t.deadline = taskState.deadline; t.time = time; }
+    if (t) { t.title = title; t.catId = taskState.catId; t.deadline = taskState.deadline; t.time = time; t.note = note; t.subtasks = subtasks; }
   } else {
-    state.tasks.push({ id: uid(), title, catId: taskState.catId, deadline: taskState.deadline, time, done: false, completedAt: null, createdAt: Date.now() });
+    state.tasks.push({ id: uid(), title, catId: taskState.catId, deadline: taskState.deadline, time, note, subtasks, done: false, completedAt: null, createdAt: Date.now() });
   }
   save();
   closeSheets();
-  renderTasks();
+  renderActive();
   toast(taskState.editId ? "Task updated" : "Task added");
 }
 
 function deleteTask() {
   state.tasks = state.tasks.filter((x) => x.id !== taskState.editId);
-  save(); closeSheets(); renderTasks(); toast("Task deleted");
+  save(); closeSheets(); renderActive(); toast("Task deleted");
+}
+
+let clearArmTimer = null;
+function clearCompleted() {
+  const b = $("#clear-completed");
+  const match = (x) => filterCat === null || x.catId === filterCat;
+  if (!b.classList.contains("armed")) {
+    b.classList.add("armed"); b.textContent = "Clear all?";
+    clearArmTimer = setTimeout(() => { b.classList.remove("armed"); b.textContent = "Clear"; }, 3000);
+    return;
+  }
+  clearTimeout(clearArmTimer); b.classList.remove("armed"); b.textContent = "Clear";
+  state.tasks = state.tasks.filter((x) => !(x.done && match(x)));
+  save(); renderTasks(); toast("Completed cleared");
+}
+
+function autoArchiveCompleted() {
+  const cutoff = Date.now() - 30 * 864e5;
+  const before = state.tasks.length;
+  state.tasks = state.tasks.filter((x) => !(x.done && x.completedAt && x.completedAt < cutoff));
+  if (state.tasks.length !== before) save();
 }
 
 /* ---- categories ---- */
@@ -336,6 +475,57 @@ function moveCat(dir) {
   renderTasks();
   updateCatReorder();
   toast(dir < 0 ? "Moved earlier" : "Moved later");
+}
+
+const swap = (arr, i, j) => { const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp; };
+
+/* habits reorder — moves within the same type group (daily / interval) */
+function updateHabitReorder() {
+  const cur = state.habits.findIndex((h) => h.id === habitState.editId);
+  const up = $('[data-act="habit-move-up"]'), down = $('[data-act="habit-move-down"]');
+  if (cur < 0) { up.disabled = down.disabled = true; return; }
+  const type = state.habits[cur].type;
+  up.disabled = !state.habits.slice(0, cur).some((h) => h.type === type);
+  down.disabled = !state.habits.slice(cur + 1).some((h) => h.type === type);
+}
+function moveHabit(dir) {
+  const cur = state.habits.findIndex((h) => h.id === habitState.editId);
+  if (cur < 0) return;
+  const type = state.habits[cur].type;
+  let j = cur + dir;
+  while (j >= 0 && j < state.habits.length && state.habits[j].type !== type) j += dir;
+  if (j < 0 || j >= state.habits.length) return;
+  swap(state.habits, cur, j);
+  save(); renderHabits(); updateHabitReorder();
+  toast(dir < 0 ? "Moved up" : "Moved down");
+}
+
+function updateCdReorder() {
+  const i = state.countdowns.findIndex((c) => c.id === cdState.editId);
+  $('[data-act="cd-move-up"]').disabled = i <= 0;
+  $('[data-act="cd-move-down"]').disabled = i < 0 || i >= state.countdowns.length - 1;
+}
+function moveCd(dir) {
+  const i = state.countdowns.findIndex((c) => c.id === cdState.editId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.countdowns.length) return;
+  swap(state.countdowns, i, j);
+  save(); renderCountdowns(); updateCdReorder();
+  toast(dir < 0 ? "Moved up" : "Moved down");
+}
+
+function updateEvReorder() {
+  const i = state.events.findIndex((e) => e.id === evState.editId);
+  $('[data-act="ev-move-up"]').disabled = i <= 0;
+  $('[data-act="ev-move-down"]').disabled = i < 0 || i >= state.events.length - 1;
+}
+function moveEv(dir) {
+  const i = state.events.findIndex((e) => e.id === evState.editId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.events.length) return;
+  swap(state.events, i, j);
+  save(); renderEvents(); updateEvReorder();
+  toast(dir < 0 ? "Moved up" : "Moved down");
 }
 
 function updateCatSave() { $("#cat-save").disabled = !$("#cat-input").value.trim(); }
@@ -443,11 +633,12 @@ function checkinHabit(id, btn) {
   if (!h || h.type !== "daily") return;
   h.log = h.log || {};
   const t = todayKey();
-  if (h.log[t]) delete h.log[t]; else { h.log[t] = true; if (btn) btn.classList.add("burst"); }
+  if (h.log[t]) delete h.log[t]; else { h.log[t] = true; if (btn) btn.classList.add("burst"); haptic(12); }
   save();
   const s = streakInfo(h);
-  if (h.log[t] && s.current > 1) toast(`🔥 ${s.current} day streak!`);
-  renderHabits();
+  if (h.log[t] && [10, 30, 100].includes(s.current)) celebrate(`🔥 ${s.current}-day streak!`);
+  else if (h.log[t] && s.current > 1) toast(`🔥 ${s.current} day streak!`);
+  renderActive();
 }
 
 function intervalDone(id) {
@@ -457,7 +648,8 @@ function intervalDone(id) {
   h.last = t;
   h.next = addDays(t, h.every);
   h.count = (h.count || 0) + 1;
-  save(); renderHabits();
+  haptic(12);
+  save(); renderActive();
   toast(`Done! Next in ${h.every} days`);
 }
 
@@ -552,6 +744,9 @@ function openHabitSheet(habit) {
   $("#habit-save").textContent = habit ? "Save habit" : "Create habit";
   $("#habit-input").value = habit ? habit.name : "";
   $("#habit-edit-extras").hidden = !habit;
+  const sameType = habit ? state.habits.filter((h) => h.type === habit.type).length : 0;
+  $("#habit-reorder").hidden = !habit || sameType < 2;
+  if (habit) updateHabitReorder();
   // lock type when editing
   $$("#habit-type-seg .seg-btn").forEach((b) => { b.classList.toggle("active", b.dataset.htype === habitState.type); b.disabled = !!habit; });
   syncHabitType();
@@ -601,14 +796,9 @@ function deleteHabit() {
    COUNTDOWNS
    ============================================================ */
 function renderCountdowns() {
-  const list = state.countdowns.slice().sort((a, b) => {
-    const da = daysBetween(todayKey(), a.date), db = daysBetween(todayKey(), b.date);
-    const pa = da < 0, pb = db < 0;
-    if (pa !== pb) return pa ? 1 : -1;       // upcoming first, passed last
-    return pa ? db - da : da - db;            // upcoming asc, passed most-recent first
-  });
-  $("#countdown-list").innerHTML = list.length
-    ? list.map(cdCard).join("")
+  // manual order (drag/reorder via the edit sheet); newest added last
+  $("#countdown-list").innerHTML = state.countdowns.length
+    ? state.countdowns.map(cdCard).join("")
     : emptyState("hourglass", "Nothing to count down", "Add a trip, a birthday, a release — anything you're waiting for.");
 }
 
@@ -634,6 +824,8 @@ function openCdSheet(cd) {
   $("#cd-input").value = cd ? cd.title : "";
   $("#cd-date").value = cd ? cd.date : todayKey();
   $("#cd-edit-extras").hidden = !cd;
+  $("#cd-reorder").hidden = !cd || state.countdowns.length < 2;
+  if (cd) updateCdReorder();
   renderSwatchRow($("#cd-colors"), cdState.color);
   renderIconGrid($("#cd-icons"), cdState.icon, cdState.color);
   updateCdSave();
@@ -672,7 +864,7 @@ function nextOccurrenceKey(ev) {
 }
 
 function renderEvents() {
-  const list = state.events.slice().sort((a, b) => daysBetween(todayKey(), nextOccurrenceKey(a)) - daysBetween(todayKey(), nextOccurrenceKey(b)));
+  const list = state.events;   // manual order (reorder via the edit sheet)
   $("#event-list").innerHTML = list.length
     ? list.map(evCard).join("")
     : emptyState("sparkles", "Yearly moments", "Birthdays, anniversaries, renewals — dates that come back every year.");
@@ -700,6 +892,8 @@ function openEvSheet(ev) {
   $("#ev-input").value = ev ? ev.title : "";
   $("#ev-date").value = ev ? `${new Date().getFullYear()}-${pad2(ev.month)}-${pad2(ev.day)}` : todayKey();
   $("#ev-edit-extras").hidden = !ev;
+  $("#ev-reorder").hidden = !ev || state.events.length < 2;
+  if (ev) updateEvReorder();
   renderSwatchRow($("#ev-colors"), evState.color);
   renderIconGrid($("#ev-icons"), evState.icon, evState.color);
   updateEvSave();
@@ -812,7 +1006,7 @@ function setTab(tab) {
   $$(".screen").forEach((s) => { s.hidden = s.dataset.screen !== tab; });
   $$(".dock-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   const fab = $("#fab");
-  const labels = { tasks: "Task", habits: "Habit", countdowns: "Add", events: "Add" };
+  const labels = { today: "Task", tasks: "Task", habits: "Habit", countdowns: "Add", events: "Add" };
   if (tab === "calendar") { fab.classList.add("hide"); }
   else { fab.classList.remove("hide"); $("#fab-label").textContent = labels[tab]; }
   renderActive();
@@ -820,7 +1014,7 @@ function setTab(tab) {
 }
 
 function fabAdd() {
-  if (activeTab === "tasks") openTaskSheet(null);
+  if (activeTab === "today" || activeTab === "tasks") openTaskSheet(null);
   else if (activeTab === "habits") openHabitSheet(null);
   else if (activeTab === "countdowns") openCdSheet(null);
   else if (activeTab === "events") openEvSheet(null);
@@ -838,6 +1032,26 @@ function closeSheets(silent) {
   $$(".sheet.open").forEach((s) => s.classList.remove("open"));
   if (!silent) $("#backdrop").hidden = true;
   openSheetId = silent ? openSheetId : null;
+}
+
+/* ---------------- haptics + celebration ---------------- */
+function haptic(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} }
+function celebrate(msg) {
+  if (msg) toast(msg);
+  haptic([12, 40, 12]);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const wrap = $("#confetti");
+  const colors = ["#6d5cff", "#b14cff", "#ff4d9d", "#ff8a4c", "#34d399", "#27c8f0", "#facc15"];
+  for (let i = 0; i < 44; i++) {
+    const p = document.createElement("i");
+    p.style.left = Math.random() * 100 + "vw";
+    p.style.background = colors[i % colors.length];
+    p.style.setProperty("--dur", (1.6 + Math.random() * 1.2) + "s");
+    p.style.setProperty("--rot", (Math.random() * 720 - 360) + "deg");
+    p.style.animationDelay = (Math.random() * 0.3) + "s";
+    wrap.appendChild(p);
+    setTimeout(() => p.remove(), 3400);
+  }
 }
 
 /* ---------------- toast ---------------- */
@@ -984,6 +1198,9 @@ $("#task-save").addEventListener("click", saveTask);
 $("#task-delete").addEventListener("click", deleteTask);
 $("#task-deadline").addEventListener("change", (e) => { taskState.deadline = e.target.value || null; renderDeadlineRow(); });
 $("#task-time").addEventListener("change", (e) => { taskState.time = e.target.value || null; });
+$("#subtask-add-btn").addEventListener("click", addSubtask);
+$("#subtask-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } });
+$("#clear-completed").addEventListener("click", clearCompleted);
 // cat sheet
 $("#cat-input").addEventListener("input", updateCatSave);
 $("#cat-save").addEventListener("click", saveCat);
@@ -1016,7 +1233,7 @@ $("#cal-month-label").addEventListener("click", () => { const d = new Date(); ca
 
 /* ---------------- global delegation ---------------- */
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
+  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
   if (!el) return;
 
   if (el.dataset.tab) return setTab(el.dataset.tab);
@@ -1028,12 +1245,22 @@ document.addEventListener("click", (e) => {
       case "toggle-manage": manageCats = !manageCats; renderTasks(); return;
       case "cat-move-left": return moveCat(-1);
       case "cat-move-right": return moveCat(1);
+      case "habit-move-up": return moveHabit(-1);
+      case "habit-move-down": return moveHabit(1);
+      case "cd-move-up": return moveCd(-1);
+      case "cd-move-down": return moveCd(1);
+      case "ev-move-up": return moveEv(-1);
+      case "ev-move-down": return moveEv(1);
       case "clear-time": taskState.time = null; $("#task-time").value = ""; return;
     }
     return;
   }
   // tasks
   if (el.dataset.toggle) return toggleTask(el.dataset.toggle, el);
+  if (el.dataset.subtoggle) { const [tid, sid] = el.dataset.subtoggle.split("|"); return toggleSubtask(tid, sid); }
+  // subtask editor (in task sheet)
+  if (el.dataset.sbtoggle !== undefined) { const i = +el.dataset.sbtoggle; syncSubtasks(); if (taskState.subtasks[i]) taskState.subtasks[i].done = !taskState.subtasks[i].done; renderSubtaskEditor(); return; }
+  if (el.dataset.sbdel !== undefined) { const i = +el.dataset.sbdel; syncSubtasks(); taskState.subtasks.splice(i, 1); renderSubtaskEditor(); return; }
   if (el.dataset.editTask) { const t = state.tasks.find((x) => x.id === el.dataset.editTask); if (t) openTaskSheet(t); return; }
   if (el.dataset.filter !== undefined) {
     const id = el.dataset.filter || null;
@@ -1078,7 +1305,8 @@ $("#completed-toggle").addEventListener("click", () => {
 });
 
 /* ---------------- boot ---------------- */
-setTab("tasks");
+autoArchiveCompleted();
+setTab("today");
 renderSyncUI();
 
 (function firstRun() {
