@@ -295,8 +295,8 @@ function toggleSubtask(taskId, subId) {
   const s = t.subtasks.find((x) => x.id === subId);
   if (!s) return;
   s.done = !s.done;
-  haptic(8);
   save();
+  if (s.done) celebrate(null, 18);
   renderActive();
 }
 
@@ -306,12 +306,12 @@ function toggleTask(id, btn) {
   const wasTodayDue = !t.done && t.deadline && t.deadline <= todayKey();
   t.done = !t.done;
   t.completedAt = t.done ? Date.now() : null;
-  if (t.done && btn) { btn.classList.add("burst"); haptic(12); }
+  if (t.done && btn) btn.classList.add("burst");
   save();
   if (t.done) {
     const remaining = state.tasks.some((x) => !x.done && x.deadline && x.deadline <= todayKey());
-    if (wasTodayDue && !remaining) celebrate("All done for today! 🎉");
-    else toast("Nice — task done ✦");
+    if (wasTodayDue && !remaining) celebrate("All done for today! 🎉", 70);
+    else celebrate("Nice — task done ✦", 34);
   }
   renderActive();
 }
@@ -633,11 +633,13 @@ function checkinHabit(id, btn) {
   if (!h || h.type !== "daily") return;
   h.log = h.log || {};
   const t = todayKey();
-  if (h.log[t]) delete h.log[t]; else { h.log[t] = true; if (btn) btn.classList.add("burst"); haptic(12); }
+  if (h.log[t]) delete h.log[t]; else { h.log[t] = true; if (btn) btn.classList.add("burst"); }
   save();
   const s = streakInfo(h);
-  if (h.log[t] && [10, 30, 100].includes(s.current)) celebrate(`🔥 ${s.current}-day streak!`);
-  else if (h.log[t] && s.current > 1) toast(`🔥 ${s.current} day streak!`);
+  if (h.log[t]) {
+    if ([10, 30, 100].includes(s.current)) celebrate(`🔥 ${s.current}-day streak!`, 70);
+    else celebrate(s.current > 1 ? `🔥 ${s.current} day streak!` : "Checked in ✦", 34);
+  }
   renderActive();
 }
 
@@ -648,9 +650,8 @@ function intervalDone(id) {
   h.last = t;
   h.next = addDays(t, h.every);
   h.count = (h.count || 0) + 1;
-  haptic(12);
   save(); renderActive();
-  toast(`Done! Next in ${h.every} days`);
+  celebrate(`Done! Next in ${h.every} days`, 34);
 }
 
 /* ---- habit statistics ---- */
@@ -1036,13 +1037,13 @@ function closeSheets(silent) {
 
 /* ---------------- haptics + celebration ---------------- */
 function haptic(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} }
-function celebrate(msg) {
+function celebrate(msg, count = 30) {
   if (msg) toast(msg);
-  haptic([12, 40, 12]);
+  haptic(count >= 60 ? [12, 40, 12] : 14);
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const wrap = $("#confetti");
   const colors = ["#6d5cff", "#b14cff", "#ff4d9d", "#ff8a4c", "#34d399", "#27c8f0", "#facc15"];
-  for (let i = 0; i < 44; i++) {
+  for (let i = 0; i < count; i++) {
     const p = document.createElement("i");
     p.style.left = Math.random() * 100 + "vw";
     p.style.background = colors[i % colors.length];
