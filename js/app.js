@@ -298,6 +298,7 @@ function openCatSheet(returnTo) {
   $("#cat-save").textContent = "Create category";
   $("#cat-input").value = "";
   $("#cat-edit-extras").hidden = true;
+  $("#cat-reorder").hidden = true;
   renderSwatchRow($("#cat-colors"), catState.color);
   updateCatSave();
   openSheet("sheet-cat");
@@ -312,9 +313,29 @@ function openCatEdit(c) {
   $("#cat-save").textContent = "Save category";
   $("#cat-input").value = c.name;
   $("#cat-edit-extras").hidden = false;
+  $("#cat-reorder").hidden = state.categories.length < 2;
+  updateCatReorder();
   renderSwatchRow($("#cat-colors"), catState.color);
   updateCatSave();
   openSheet("sheet-cat");
+}
+
+function updateCatReorder() {
+  const i = state.categories.findIndex((c) => c.id === catState.editId);
+  $('[data-act="cat-move-left"]').disabled = i <= 0;
+  $('[data-act="cat-move-right"]').disabled = i < 0 || i >= state.categories.length - 1;
+}
+
+function moveCat(dir) {
+  const i = state.categories.findIndex((c) => c.id === catState.editId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.categories.length) return;
+  const [c] = state.categories.splice(i, 1);
+  state.categories.splice(j, 0, c);
+  save();
+  renderTasks();
+  updateCatReorder();
+  toast(dir < 0 ? "Moved earlier" : "Moved later");
 }
 
 function updateCatSave() { $("#cat-save").disabled = !$("#cat-input").value.trim(); }
@@ -387,10 +408,13 @@ function dailyCard(h) {
   for (let i = 6; i >= 0; i--) { const k = addDays(t, -i); dots += `<span class="wd ${h.log && h.log[k] ? "on" : ""} ${i === 0 ? "today" : ""}"></span>`; }
   return `<div class="habit-card" style="--c:${h.color}">
     <div class="habit-top">
-      <button class="habit-icon" data-edit-habit="${h.id}" aria-label="Edit ${esc(h.name)}">${icon(h.icon)}</button>
+      <div class="habit-icon">${icon(h.icon)}</div>
       <div class="streak ${s.current ? "lit" : ""}"><b>${icon("flame")}${s.current}</b><small>day streak</small></div>
     </div>
-    <div class="habit-name">${esc(h.name)}</div>
+    <div class="habit-namerow">
+      <div class="habit-name">${esc(h.name)}</div>
+      <button class="habit-edit" data-edit-habit="${h.id}" aria-label="Edit ${esc(h.name)}">${icon("edit")}</button>
+    </div>
     <div class="week-dots">${dots}</div>
     <button class="check-day ${s.doneToday ? "done" : ""}" data-checkin="${h.id}">${icon(s.doneToday ? "check" : "plus")}${s.doneToday ? "Done today" : "Check in"}</button>
   </div>`;
@@ -920,6 +944,8 @@ document.addEventListener("click", (e) => {
       case "new-cat-manage": return openCatSheet(null);
       case "new-cat-from-task": return openCatSheet("task");
       case "toggle-manage": manageCats = !manageCats; renderTasks(); return;
+      case "cat-move-left": return moveCat(-1);
+      case "cat-move-right": return moveCat(1);
       case "clear-time": taskState.time = null; $("#task-time").value = ""; return;
     }
     return;

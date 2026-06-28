@@ -58,6 +58,7 @@ html[data-theme="dark"], html:not([data-theme]) {
   --field-bg: rgba(255, 255, 255, .055);
   --glass: rgba(17, 14, 33, .72);
   --sheet-bg: linear-gradient(180deg, #18152f, #0e0c1f);
+  --sheet-bottom: #0e0c1f;
   --backdrop: rgba(5, 4, 14, .66);
   --handle: rgba(255, 255, 255, .2);
 
@@ -100,6 +101,7 @@ html[data-theme="light"] {
   --field-bg: rgba(40, 30, 90, .05);
   --glass: rgba(255, 255, 255, .78);
   --sheet-bg: linear-gradient(180deg, #ffffff, #f6f5ff);
+  --sheet-bottom: #f6f5ff;
   --backdrop: rgba(40, 30, 80, .34);
   --handle: rgba(30, 22, 70, .22);
 
@@ -185,7 +187,8 @@ html[data-theme="light"] .ic-sun { display: block; }
   --p: 0; --c: var(--accent);
   border-radius: 50%;
   background: conic-gradient(var(--c) calc(var(--p) * 1turn), var(--track) 0);
-  display: grid; place-items: center; position: relative; flex: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; flex: none;
 }
 .ring-mini { width: 52px; height: 52px; }
 .ring-mini::before, .int-ring::before { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--bg); }
@@ -273,7 +276,12 @@ html[data-theme="light"] .ic-sun { display: block; }
 .streak b .ic { width: 18px; height: 18px; color: var(--type-cd); stroke-width: 2; }
 .streak small { display: block; color: var(--faint); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; }
 .streak.lit b { color: var(--text); }
-.habit-name { font-weight: 700; font-size: 1rem; }
+.habit-namerow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.habit-name { font-weight: 700; font-size: 1rem; min-width: 0; word-break: break-word; }
+.habit-edit { flex: none; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; color: var(--faint); background: var(--card-2); border: 1px solid var(--stroke); transition: transform .3s var(--spring), color .2s, background .2s; }
+.habit-edit .ic { width: 15px; height: 15px; }
+.habit-edit:active { transform: scale(.88); }
+.habit-edit:hover { color: var(--muted); background: var(--hover); }
 .week-dots { display: flex; gap: 6px; }
 .wd { flex: 1; height: 7px; border-radius: var(--pill); background: var(--track); transition: background .3s; }
 .wd.on { background: var(--c, var(--accent)); }
@@ -500,9 +508,16 @@ html[data-theme="light"] .date-field { color-scheme: light; }
 
 /* buttons */
 .save-btn {
-  width: 100%; margin-top: 22px; padding: 16px; border-radius: var(--r-sm); font-size: 1rem; font-weight: 700;
+  position: sticky; bottom: 0; z-index: 2;
+  width: 100%; margin-top: 18px; padding: 16px; border-radius: var(--r-sm); font-size: 1rem; font-weight: 700;
   color: #fff; background: var(--brand-grad); box-shadow: 0 12px 28px -10px rgba(177, 76, 255, .55), inset 0 1px 0 rgba(255, 255, 255, .25);
   transition: transform .35s var(--spring), opacity .25s, filter .2s;
+}
+/* solid backing so scrolled content never shows around the sticky button */
+.save-btn::before {
+  content: ""; position: absolute; z-index: -1;
+  left: -20px; right: -20px; top: -18px; bottom: calc(-24px - env(safe-area-inset-bottom));
+  background: var(--sheet-bottom);
 }
 .save-btn:active { transform: scale(.97); }
 .save-btn:disabled { opacity: .45; filter: grayscale(.4); box-shadow: none; }
@@ -520,6 +535,9 @@ html[data-theme="light"] .date-field { color-scheme: light; }
 .danger-btn.wide { width: 100%; }
 .danger-btn .ic { width: 17px; height: 17px; }
 .edit-extras { margin-top: 16px; }
+.reorder-row { margin-top: 16px; }
+.reorder-btns { display: flex; gap: 10px; }
+.reorder-btns .ghost-btn:disabled { opacity: .4; }
 .sync-status { color: var(--good); font-weight: 700; font-size: .9rem; margin: 4px 0 0; }
 .sync-note { color: var(--faint); font-size: .8rem; margin: 10px 2px 0; }
 .about { color: var(--faint); font-size: .76rem; text-align: center; margin: 18px 0 0; }

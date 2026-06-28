@@ -231,6 +231,13 @@
     <input type="text" class="field" id="cat-input" placeholder="Name — e.g. Work, Health, Errands" maxlength="20" autocomplete="off" />
     <label class="field-label">Colour</label>
     <div class="swatch-row" id="cat-colors"></div>
+    <div class="reorder-row" id="cat-reorder" hidden>
+      <label class="field-label" style="margin-top:0">Order</label>
+      <div class="reorder-btns">
+        <button class="ghost-btn" data-act="cat-move-left"><svg class="ic" aria-hidden="true"><use href="#i-chevron-left"/></svg> Move earlier</button>
+        <button class="ghost-btn" data-act="cat-move-right">Move later <svg class="ic" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
+      </div>
+    </div>
     <div class="edit-extras" id="cat-edit-extras" hidden><button class="danger-btn" id="cat-delete"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete category</button></div>
     <button class="save-btn" id="cat-save" disabled>Create category</button>
   </section>
