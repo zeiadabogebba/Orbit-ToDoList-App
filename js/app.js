@@ -13,6 +13,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const icon = (id, cls = "") => `<svg class="ic${cls ? " " + cls : ""}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const tzGuess = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; } };
 
 /* ---------------- date helpers (all keys are local YYYY-MM-DD) ---------------- */
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -73,6 +74,7 @@ function freshState() {
     habits: [],
     countdowns: [],
     events: [],
+    reminders: { dailyDigest: { on: false, time: "09:00" }, tz: tzGuess() },
     updatedAt: Date.now(),
   };
 }
@@ -89,6 +91,9 @@ function load() {
     s.habits = Array.isArray(s.habits) ? s.habits : [];
     s.countdowns = Array.isArray(s.countdowns) ? s.countdowns : [];
     s.events = Array.isArray(s.events) ? s.events : [];
+    if (!s.reminders || typeof s.reminders !== "object") s.reminders = { dailyDigest: { on: false, time: "09:00" }, tz: tzGuess() };
+    if (!s.reminders.dailyDigest) s.reminders.dailyDigest = { on: false, time: "09:00" };
+    if (!s.reminders.tz) s.reminders.tz = tzGuess();
     return s;
   } catch { return freshState(); }
 }
@@ -99,6 +104,16 @@ function save() {
   state.updatedAt = Date.now();
   localStorage.setItem(LS_KEY, JSON.stringify(state));
   schedulePush();
+  updateBadge();
+}
+
+/* app-icon badge: count of tasks due/overdue + interval habits due/overdue */
+function updateBadge() {
+  if (!("setAppBadge" in navigator)) return;
+  const t = todayKey();
+  const n = state.tasks.filter((x) => !x.done && x.deadline && x.deadline <= t).length
+    + state.habits.filter((h) => h.type === "interval" && daysBetween(t, h.next) <= 0).length;
+  try { n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch {}
 }
 
 function hasData() {
@@ -115,11 +130,28 @@ let calY, calM;                  // calendar view (calM 0-based)
 let openSheetId = null;
 
 /* per-sheet working state */
-let taskState = { editId: null, catId: null, deadline: null, time: null, note: "", subtasks: [] };
+let taskState = { editId: null, catId: null, deadline: null, time: null, note: "", subtasks: [], remind: null };
 let catState = { editId: null, color: COLORS[0] };
-let habitState = { editId: null, type: "daily", icon: "flame", color: COLORS[4], every: 40, next: todayKey() };
-let cdState = { editId: null, icon: "sparkles", color: COLORS[1] };
-let evState = { editId: null, icon: "gift", color: COLORS[9] };
+let habitState = { editId: null, type: "daily", icon: "flame", color: COLORS[4], every: 40, next: todayKey(), remind: null };
+let cdState = { editId: null, icon: "sparkles", color: COLORS[1], remind: null };
+let evState = { editId: null, icon: "gift", color: COLORS[9], remind: null };
+
+// highlight the selected reminder pill in a remind-row
+function renderRemind(sel, val) {
+  $$(`${sel} [data-remind]`).forEach((b) => {
+    const v = b.dataset.remind === "off" ? null : Number(b.dataset.remind);
+    b.classList.toggle("sel", v === val);
+  });
+}
+const remindFromData = (d) => (d === "off" ? null : Number(d));
+function setRemind(el) {
+  const val = remindFromData(el.dataset.remind);
+  const id = (el.closest(".sheet") || {}).id;
+  if (id === "sheet-task") { taskState.remind = val; renderRemind("#task-remind", val); }
+  else if (id === "sheet-countdown") { cdState.remind = val; renderRemind("#cd-remind", val); }
+  else if (id === "sheet-event") { evState.remind = val; renderRemind("#ev-remind", val); }
+  else if (id === "sheet-habit") { habitState.remind = val; renderRemind("#habit-remind", val); }
+}
 
 const catOf = (id) => state.categories.find((c) => c.id === id) || null;
 
@@ -325,6 +357,7 @@ function openTaskSheet(task) {
   taskState.time = task ? task.time || null : null;
   taskState.note = task ? (task.note || "") : "";
   taskState.subtasks = task && Array.isArray(task.subtasks) ? task.subtasks.map((s) => ({ ...s })) : [];
+  taskState.remind = task && task.remind != null ? task.remind : null;
   $("#task-title").textContent = task ? "Edit task" : "New task";
   $("#task-input").value = task ? task.title : "";
   $("#task-note").value = taskState.note;
@@ -377,10 +410,12 @@ function renderDeadlineRow() {
     b.classList.toggle("sel", (k === "none" && !dl) || (k === "today" && dl === t) || (k === "tomorrow" && dl === tm));
   });
   $("#task-deadline").value = dl || "";
-  // time row only makes sense once there's a deadline date
+  // time + reminder only make sense once there's a deadline date
   $("#task-time-row").hidden = !dl;
-  if (!dl) taskState.time = null;
+  $("#task-remind-wrap").hidden = !dl;
+  if (!dl) { taskState.time = null; taskState.remind = null; }
   $("#task-time").value = taskState.time || "";
+  renderRemind("#task-remind", taskState.remind);
 }
 
 function updateTaskSave() { $("#task-save").disabled = !$("#task-input").value.trim(); }
@@ -392,11 +427,12 @@ function saveTask() {
   const note = $("#task-note").value.trim();
   syncSubtasks();
   const subtasks = taskState.subtasks.map((s) => ({ id: s.id, title: s.title.trim(), done: !!s.done })).filter((s) => s.title);
+  const remind = taskState.deadline ? taskState.remind : null;
   if (taskState.editId) {
     const t = state.tasks.find((x) => x.id === taskState.editId);
-    if (t) { t.title = title; t.catId = taskState.catId; t.deadline = taskState.deadline; t.time = time; t.note = note; t.subtasks = subtasks; }
+    if (t) { t.title = title; t.catId = taskState.catId; t.deadline = taskState.deadline; t.time = time; t.note = note; t.subtasks = subtasks; t.remind = remind; }
   } else {
-    state.tasks.push({ id: uid(), title, catId: taskState.catId, deadline: taskState.deadline, time, note, subtasks, done: false, completedAt: null, createdAt: Date.now() });
+    state.tasks.push({ id: uid(), title, catId: taskState.catId, deadline: taskState.deadline, time, note, subtasks, remind, done: false, completedAt: null, createdAt: Date.now() });
   }
   save();
   closeSheets();
@@ -743,6 +779,7 @@ function openHabitSheet(habit) {
   habitState.color = habit ? habit.color : COLORS[4];
   habitState.every = habit && habit.every ? habit.every : 40;
   habitState.next = habit && habit.next ? habit.next : todayKey();
+  habitState.remind = habit && habit.remind != null ? habit.remind : null;
   $("#habit-sheet-title").textContent = habit ? "Edit habit" : "New habit";
   $("#habit-save").textContent = habit ? "Save habit" : "Create habit";
   $("#habit-input").value = habit ? habit.name : "";
@@ -768,6 +805,7 @@ function syncHabitType() {
     : "Check in each day you do it. Miss a day and the streak resets.";
   $("#habit-interval-val").textContent = habitState.every;
   $("#habit-next").value = habitState.next;
+  renderRemind("#habit-remind", habitState.remind);
   if (!habitState.editId) $("#habit-save").textContent = "Create habit";
 }
 
@@ -780,14 +818,14 @@ function saveHabit() {
     const h = state.habits.find((x) => x.id === habitState.editId);
     if (h) {
       h.name = name; h.icon = habitState.icon; h.color = habitState.color;
-      if (h.type === "interval") { h.every = habitState.every; h.next = habitState.next; }
+      if (h.type === "interval") { h.every = habitState.every; h.next = habitState.next; h.remind = habitState.remind; }
     }
   } else if (habitState.type === "daily") {
     state.habits.push({ id: uid(), type: "daily", name, icon: habitState.icon, color: habitState.color, log: {}, createdAt: Date.now() });
   } else {
-    state.habits.push({ id: uid(), type: "interval", name, icon: habitState.icon, color: habitState.color, every: habitState.every, next: habitState.next, last: null, createdAt: Date.now() });
+    state.habits.push({ id: uid(), type: "interval", name, icon: habitState.icon, color: habitState.color, every: habitState.every, next: habitState.next, last: null, remind: habitState.remind, createdAt: Date.now() });
   }
-  save(); closeSheets(); renderHabits(); toast(habitState.editId ? "Habit updated" : "Habit created");
+  save(); closeSheets(); renderActive(); toast(habitState.editId ? "Habit updated" : "Habit created");
 }
 
 function deleteHabit() {
@@ -845,6 +883,8 @@ function openCdSheet(cd) {
   $("#cd-edit-extras").hidden = !cd;
   $("#cd-reorder").hidden = !cd || state.countdowns.length < 2;
   if (cd) updateCdReorder();
+  cdState.remind = cd && cd.remind != null ? cd.remind : null;
+  renderRemind("#cd-remind", cdState.remind);
   renderSwatchRow($("#cd-colors"), cdState.color);
   renderIconGrid($("#cd-icons"), cdState.icon, cdState.color);
   updateCdSave();
@@ -859,11 +899,11 @@ function saveCd() {
   if (!title || !date) return;
   if (cdState.editId) {
     const cd = state.countdowns.find((x) => x.id === cdState.editId);
-    if (cd) { cd.title = title; cd.date = date; cd.icon = cdState.icon; cd.color = cdState.color; }
+    if (cd) { cd.title = title; cd.date = date; cd.icon = cdState.icon; cd.color = cdState.color; cd.remind = cdState.remind; }
   } else {
-    state.countdowns.push({ id: uid(), title, date, icon: cdState.icon, color: cdState.color, createdAt: Date.now() });
+    state.countdowns.push({ id: uid(), title, date, icon: cdState.icon, color: cdState.color, remind: cdState.remind, createdAt: Date.now() });
   }
-  save(); closeSheets(); renderCountdowns(); toast(cdState.editId ? "Countdown updated" : "Countdown added");
+  save(); closeSheets(); renderActive(); toast(cdState.editId ? "Countdown updated" : "Countdown added");
 }
 
 function deleteCd() {
@@ -913,6 +953,8 @@ function openEvSheet(ev) {
   $("#ev-edit-extras").hidden = !ev;
   $("#ev-reorder").hidden = !ev || state.events.length < 2;
   if (ev) updateEvReorder();
+  evState.remind = ev && ev.remind != null ? ev.remind : null;
+  renderRemind("#ev-remind", evState.remind);
   renderSwatchRow($("#ev-colors"), evState.color);
   renderIconGrid($("#ev-icons"), evState.icon, evState.color);
   updateEvSave();
@@ -928,11 +970,11 @@ function saveEv() {
   const [, m, d] = dv.split("-").map(Number);
   if (evState.editId) {
     const ev = state.events.find((x) => x.id === evState.editId);
-    if (ev) { ev.title = title; ev.month = m; ev.day = d; ev.icon = evState.icon; ev.color = evState.color; }
+    if (ev) { ev.title = title; ev.month = m; ev.day = d; ev.icon = evState.icon; ev.color = evState.color; ev.remind = evState.remind; }
   } else {
-    state.events.push({ id: uid(), title, month: m, day: d, icon: evState.icon, color: evState.color, createdAt: Date.now() });
+    state.events.push({ id: uid(), title, month: m, day: d, icon: evState.icon, color: evState.color, remind: evState.remind, createdAt: Date.now() });
   }
-  save(); closeSheets(); renderEvents(); toast(evState.editId ? "Event updated" : "Event added");
+  save(); closeSheets(); renderActive(); toast(evState.editId ? "Event updated" : "Event added");
 }
 
 function deleteEv() {
@@ -1148,10 +1190,69 @@ let pushTimer = null;
 function setSyncMsg(m) { const el = $("#sync-status"); if (el) el.textContent = m; }
 function renderSyncUI() {
   const note = $("#sync-note");
-  if (!sb) { $("#sync-out").hidden = true; $("#sync-in").hidden = true; note.textContent = "Add your Supabase keys in js/config.js to enable backup & multi-device sync."; return; }
+  if (!sb) { $("#sync-out").hidden = true; $("#sync-in").hidden = true; note.textContent = "Add your Supabase keys in js/config.js to enable backup & multi-device sync."; renderRemindersUI(); return; }
   $("#sync-out").hidden = !!cloudUser;
   $("#sync-in").hidden = !cloudUser;
   note.textContent = cloudUser ? `Signed in as ${cloudUser.email}` : "Sign in with an email code to back up & sync across devices.";
+  renderRemindersUI();
+}
+
+/* ---- web push / reminders ---- */
+const VAPID = (window.ORBIT_PUSH && window.ORBIT_PUSH.vapidPublic) || "";
+const pushConfigured = !!VAPID && !VAPID.includes("YOUR-");
+
+function urlB64ToUint8(base64) {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+async function getPushSub() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  try { const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); } catch { return null; }
+}
+async function renderRemindersUI() {
+  const note = $("#reminders-note"), enableBtn = $("#btn-enable-push"), inBox = $("#reminders-in");
+  if (!note) return;
+  if (!sb || !cloudUser) { enableBtn.hidden = true; inBox.hidden = true; note.textContent = "Sign in above to enable reminders."; return; }
+  if (!pushConfigured || !("Notification" in window)) { enableBtn.hidden = true; inBox.hidden = true; note.textContent = "Push isn't set up yet (see README) — per-item reminders are saved and will fire once it is."; return; }
+  const subbed = Notification.permission === "granted" && !!(await getPushSub());
+  enableBtn.hidden = subbed;
+  inBox.hidden = !subbed;
+  if (subbed) {
+    const r = state.reminders.dailyDigest;
+    $("#daily-toggle").classList.toggle("on", !!r.on);
+    $("#daily-toggle").setAttribute("aria-checked", r.on ? "true" : "false");
+    $("#daily-time-row").hidden = !r.on;
+    $("#daily-time").value = r.time || "09:00";
+    note.textContent = "Reminders are on for this device.";
+  } else {
+    note.textContent = "Turn on notifications to get reminders on this device.";
+  }
+}
+async function enablePush() {
+  if (!pushConfigured) return toast("Push not configured yet — see README");
+  if (!cloudUser) return toast("Sign in first");
+  let perm = Notification.permission;
+  if (perm !== "granted") perm = await Notification.requestPermission();
+  if (perm !== "granted") return toast("Notifications not allowed");
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID) });
+    const j = sub.toJSON();
+    const tz = tzGuess();
+    await sb.from("push_subscriptions").upsert(
+      { user_id: cloudUser.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, tz, updated_at: new Date().toISOString() },
+      { onConflict: "endpoint" }
+    );
+    state.reminders.tz = tz;
+    state.reminders.dailyDigest.on = true;
+    save();
+    renderRemindersUI();
+    toast("Notifications enabled ✦");
+  } catch { toast("Couldn't enable notifications"); }
 }
 function schedulePush() { if (!sb || !cloudUser) return; clearTimeout(pushTimer); pushTimer = setTimeout(cloudPush, 1500); }
 async function cloudPush() {
@@ -1241,6 +1342,9 @@ $("#ev-date").addEventListener("change", updateEvSave);
 $("#ev-save").addEventListener("click", saveEv);
 $("#ev-delete").addEventListener("click", deleteEv);
 // settings
+$("#btn-enable-push").addEventListener("click", enablePush);
+$("#daily-toggle").addEventListener("click", () => { state.reminders.dailyDigest.on = !state.reminders.dailyDigest.on; save(); renderRemindersUI(); });
+$("#daily-time").addEventListener("change", (e) => { state.reminders.dailyDigest.time = e.target.value || "09:00"; save(); });
 $("#btn-export").addEventListener("click", exportBackup);
 $("#btn-import").addEventListener("click", () => $("#file-import").click());
 $("#file-import").addEventListener("change", (e) => { if (e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ""; });
@@ -1252,7 +1356,7 @@ $("#cal-month-label").addEventListener("click", () => { const d = new Date(); ca
 
 /* ---------------- global delegation ---------------- */
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-cd-toggle],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
+  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-remind],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-cd-toggle],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
   if (!el) return;
 
   if (el.dataset.tab) return setTab(el.dataset.tab);
@@ -1292,6 +1396,7 @@ document.addEventListener("click", (e) => {
     taskState.deadline = v === "none" ? null : v === "today" ? todayKey() : addDays(todayKey(), 1);
     renderDeadlineRow(); return;
   }
+  if (el.dataset.remind !== undefined) return setRemind(el);
   // pickers
   if (el.dataset.swatch) return pickColor(el.dataset.swatch);
   if (el.dataset.iconpick) return pickIcon(el.dataset.iconpick);
@@ -1328,6 +1433,7 @@ $("#completed-toggle").addEventListener("click", () => {
 autoArchiveCompleted();
 setTab("today");
 renderSyncUI();
+updateBadge();
 
 (function firstRun() {
   if (!hasData()) setTimeout(() => toast("Welcome to Orbit ✦ tap + to add your first task"), 800);

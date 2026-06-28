@@ -234,6 +234,17 @@
       <input type="time" class="field date-field" id="task-time" aria-label="Deadline time" />
       <button class="quick-pill" data-act="clear-time">Clear</button>
     </div>
+    <div id="task-remind-wrap" hidden>
+      <label class="field-label"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg> Reminder</label>
+      <div class="remind-row" id="task-remind">
+        <button class="quick-pill" data-remind="off">Off</button>
+        <button class="quick-pill" data-remind="0">At time</button>
+        <button class="quick-pill" data-remind="1">1h before</button>
+        <button class="quick-pill" data-remind="3">3h before</button>
+        <button class="quick-pill" data-remind="24">1 day</button>
+        <button class="quick-pill" data-remind="168">1 week</button>
+      </div>
+    </div>
     <label class="field-label">Subtasks</label>
     <div id="subtask-list"></div>
     <div class="subtask-add">
@@ -283,6 +294,13 @@
       </div>
       <label class="field-label">Next due</label>
       <input type="date" class="field date-field" id="habit-next" aria-label="Next due date" />
+      <label class="field-label"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg> Reminder</label>
+      <div class="remind-row" id="habit-remind">
+        <button class="quick-pill" data-remind="off">Off</button>
+        <button class="quick-pill" data-remind="0">On the day</button>
+        <button class="quick-pill" data-remind="24">1 day</button>
+        <button class="quick-pill" data-remind="72">3 days</button>
+      </div>
     </div>
     <label class="field-label">Icon</label>
     <div class="icon-grid" id="habit-icons"></div>
@@ -306,6 +324,14 @@
     <input type="text" class="field" id="cd-input" placeholder="What's coming up?" maxlength="40" autocomplete="off" />
     <label class="field-label">Date</label>
     <input type="date" class="field date-field" id="cd-date" aria-label="Countdown date" />
+    <label class="field-label"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg> Reminder</label>
+    <div class="remind-row" id="cd-remind">
+      <button class="quick-pill" data-remind="off">Off</button>
+      <button class="quick-pill" data-remind="0">On the day</button>
+      <button class="quick-pill" data-remind="3">3h before</button>
+      <button class="quick-pill" data-remind="24">1 day</button>
+      <button class="quick-pill" data-remind="168">1 week</button>
+    </div>
     <label class="field-label">Icon</label>
     <div class="icon-grid" id="cd-icons"></div>
     <label class="field-label">Colour</label>
@@ -328,6 +354,14 @@
     <input type="text" class="field" id="ev-input" placeholder="e.g. Mum's birthday, Anniversary" maxlength="40" autocomplete="off" />
     <label class="field-label">Date <small>(repeats every year)</small></label>
     <input type="date" class="field date-field" id="ev-date" aria-label="Event date" />
+    <label class="field-label"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg> Reminder</label>
+    <div class="remind-row" id="ev-remind">
+      <button class="quick-pill" data-remind="off">Off</button>
+      <button class="quick-pill" data-remind="0">On the day</button>
+      <button class="quick-pill" data-remind="24">1 day</button>
+      <button class="quick-pill" data-remind="72">3 days</button>
+      <button class="quick-pill" data-remind="168">1 week</button>
+    </div>
     <label class="field-label">Icon</label>
     <div class="icon-grid" id="ev-icons"></div>
     <label class="field-label">Colour</label>
@@ -377,6 +411,22 @@
       <div class="set-row"><button class="ghost-btn" id="btn-sync-now">Sync now</button><button class="ghost-btn" id="btn-signout">Sign out</button></div>
     </div>
     <p class="sync-note" id="sync-note"></p>
+
+    <div class="set-divider"></div>
+
+    <label class="field-label"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg> Reminders</label>
+    <button class="ghost-btn wide-btn" id="btn-enable-push" hidden>Enable notifications</button>
+    <div id="reminders-in" hidden>
+      <div class="set-toggle">
+        <div><span class="st-title">Daily reminder</span><span class="st-sub">A morning summary of what's due today</span></div>
+        <button class="switch" id="daily-toggle" role="switch" aria-checked="false" aria-label="Daily reminder"><span class="knob"></span></button>
+      </div>
+      <div class="set-row" id="daily-time-row" hidden>
+        <span class="time-label">Remind me at</span>
+        <input type="time" class="field date-field" id="daily-time" aria-label="Daily reminder time" />
+      </div>
+    </div>
+    <p class="sync-note" id="reminders-note"></p>
 
     <div class="set-divider"></div>
 

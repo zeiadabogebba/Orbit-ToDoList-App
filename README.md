@@ -99,6 +99,12 @@ create policy "own row" on orbit_state
 
 3. (Email OTP) In **Authentication → Providers → Email**, enable email sign-in. Optionally set up Gmail SMTP as the sender.
 
+### Enable reminders / push notifications (optional)
+The app-icon badge and reminder settings work locally; delivering push notifications
+needs a one-time backend setup (VAPID keys, a couple of tables, and a `pg_cron` job
+that runs the `send-reminders` Edge Function every minute). Full steps:
+**[supabase/REMINDERS-SETUP.md](supabase/REMINDERS-SETUP.md)**.
+
 ### Deploy
 Push to a repo and import it into Vercel as a static project (no build command, output = repo root).
 
@@ -112,8 +118,9 @@ Push to a repo and import it into Vercel as a static project (no build command, 
 ├── manifest.webmanifest    PWA identity
 ├── css/styles.css          theme tokens, styling, motion
 ├── js/app.js               state, rendering, sync engine
-├── js/config.js            Supabase URL + publishable key
-└── icons/                  PWA icons (gradient orbit mark)
+├── js/config.js            Supabase URL + publishable key + VAPID public key
+├── icons/                  PWA icons (gradient orbit mark)
+└── supabase/               reminders backend (Edge Function, SQL, setup guide)
 ```
 
 > Orbit v1 · your data lives on your device — export a backup once in a while.

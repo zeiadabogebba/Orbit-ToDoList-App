@@ -575,6 +575,18 @@ input.field[type="time"]::-webkit-calendar-picker-indicator { opacity: 0; }
 .time-row .date-field { flex: 1; min-width: 110px; margin: 0; }
 .time-label { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .time-label .ic { width: 15px; height: 15px; color: var(--accent); }
+.remind-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* settings toggle switch */
+.set-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.st-title { font-weight: 600; font-size: .95rem; display: block; }
+.st-sub { color: var(--muted); font-size: .78rem; }
+.switch { width: 48px; height: 28px; min-width: 48px; border-radius: var(--pill); background: var(--track); border: 1px solid var(--stroke); position: relative; flex: none; transition: background .25s; }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .28s var(--spring); box-shadow: 0 2px 6px rgba(0, 0, 0, .3); }
+.switch.on { background: var(--brand-grad-soft); border-color: transparent; }
+.switch.on .knob { transform: translateX(20px); }
+#daily-time-row { margin-top: 12px; align-items: center; }
+#daily-time-row .date-field { flex: 1; margin: 0; }
 
 /* swatches */
 .swatch-row { display: flex; flex-wrap: wrap; gap: 10px; }
