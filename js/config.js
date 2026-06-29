@@ -12,5 +12,5 @@ window.ORBIT_SUPABASE = {
    and paste the PUBLIC key here. The PRIVATE key goes in Supabase secrets, never here.
    Leave the placeholder to keep reminders off until the backend is set up. */
 window.ORBIT_PUSH = {
-  vapidPublic: "YOUR-VAPID-PUBLIC-KEY",
+  vapidPublic: "BCqbffR0u6Xbbj-ZgR4cyYe2qyAD1sIY6QWyQ3nZoR4OpY2E8sK5V3pKJCkHs9zmi_ur15tO0Gzl-lcxsxeuVR8",
 };
