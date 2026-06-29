@@ -730,6 +730,21 @@ function heatmapCells(h) {
   return out;
 }
 
+function habitLogStrip(h) {
+  const log = h.log || {};
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  let out = "";
+  for (let i = 0; i < 60; i++) {
+    const k = addDays(todayKey(), -i);
+    const d = parseKey(k);
+    const label = i === 0 ? "Today" : weekdays[d.getDay()];
+    const date = `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+    out += `<button class="habit-log-day ${log[k] ? "on" : ""} ${i === 0 ? "today" : ""}" data-habit-log="${h.id}|${k}" aria-pressed="${log[k] ? "true" : "false"}" aria-label="${log[k] ? "Remove" : "Log"} ${esc(h.name)} for ${date}">
+      <span>${label}</span><b>${date}</b>
+    </button>`;
+  }
+  return out;
+}
 let statsHabitId = null;
 function openHabitStats(h) {
   statsHabitId = h.id;
@@ -750,6 +765,8 @@ function openHabitStats(h) {
         ${tile(d.rate + "%", "Consistency")}
         ${tile(d.last30, "Last 30 days")}
       </div>
+      <label class="field-label">Log missed days</label>
+      <div class="habit-log-strip" style="--c:${h.color}" aria-label="Past habit days">${habitLogStrip(h)}</div>
       <label class="field-label">Last 12 weeks</label>
       <div class="heatmap" style="--c:${h.color}">${heatmapCells(h)}</div>`;
   } else {
@@ -772,6 +789,17 @@ function openHabitStats(h) {
   openSheet("sheet-habit-stats");
 }
 
+function toggleHabitLogDay(data) {
+  const [id, key] = data.split("|");
+  const h = state.habits.find((x) => x.id === id);
+  if (!h || h.type !== "daily" || !key || daysBetween(todayKey(), key) > 0) return;
+  h.log = h.log || {};
+  if (h.log[key]) delete h.log[key]; else h.log[key] = true;
+  save();
+  renderActive();
+  openHabitStats(h);
+  haptic(12);
+}
 function openHabitSheet(habit) {
   habitState.editId = habit ? habit.id : null;
   habitState.type = habit ? habit.type : "daily";
@@ -1356,7 +1384,7 @@ $("#cal-month-label").addEventListener("click", () => { const d = new Date(); ca
 
 /* ---------------- global delegation ---------------- */
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-remind],[data-swatch],[data-iconpick],[data-checkin],[data-intdone],[data-edit-habit],[data-habit-stats],[data-cd-toggle],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
+  const el = e.target.closest("[data-tab],[data-act],[data-toggle],[data-subtoggle],[data-sbtoggle],[data-sbdel],[data-edit-task],[data-filter],[data-pickcat],[data-deadline],[data-remind],[data-swatch],[data-iconpick],[data-checkin],[data-habit-log],[data-intdone],[data-edit-habit],[data-habit-stats],[data-cd-toggle],[data-edit-cd],[data-edit-ev],[data-htype],[data-step],[data-day]");
   if (!el) return;
 
   if (el.dataset.tab) return setTab(el.dataset.tab);
@@ -1402,6 +1430,7 @@ document.addEventListener("click", (e) => {
   if (el.dataset.iconpick) return pickIcon(el.dataset.iconpick);
   // habits
   if (el.dataset.checkin) return checkinHabit(el.dataset.checkin, el);
+  if (el.dataset.habitLog) return toggleHabitLogDay(el.dataset.habitLog);
   if (el.dataset.intdone) return intervalDone(el.dataset.intdone);
   if (el.dataset.editHabit) { const h = state.habits.find((x) => x.id === el.dataset.editHabit); if (h) openHabitSheet(h); return; }
   if (el.dataset.habitStats) { const h = state.habits.find((x) => x.id === el.dataset.habitStats); if (h) openHabitStats(h); return; }
